@@ -1,0 +1,2707 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>EduRunner AR: Lari Rintangan Pengetahuan</title>
+
+  <!-- Font Modern HTTPS (Kompatibel GitHub Pages) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- MediaPipe Pose Resmi via CDN HTTPS -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --bg-dark: #070b18;
+      --panel-bg: rgba(13, 20, 40, 0.86);
+      --panel-border: rgba(94, 234, 212, 0.28);
+      --cyan: #22d3ee;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --indigo: #6366f1;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Elemen video asli disembunyikan di luar layar agar browser tidak membekukan stream */
+    #webcamVideo {
+      position: absolute;
+      left: -10000px;
+      top: 0;
+      width: 640px;
+      height: 480px;
+      pointer-events: none;
+    }
+
+    /* Kanvas utama 60 FPS */
+    #gameCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Lapisan HUD di atas kanvas */
+    .hud-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(10px, 1.8vw, 18px);
+    }
+
+    .hud-top {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .hud-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 10px 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      pointer-events: auto;
+    }
+
+    /* Panel Statistik Kiri Atas */
+    .stats-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 170px;
+    }
+
+    .stats-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .stat-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--cyan);
+      line-height: 1;
+    }
+
+    .hearts {
+      display: flex;
+      gap: 4px;
+      font-size: 1.2rem;
+    }
+
+    .heart-lost {
+      opacity: 0.22;
+      filter: grayscale(1);
+    }
+
+    .speed-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 999px;
+      padding: 3px 10px;
+      width: fit-content;
+    }
+
+    /* Papan Soal Tengah Atas */
+    .question-board {
+      max-width: 720px;
+      width: 100%;
+      justify-self: center;
+      text-align: center;
+      border-color: rgba(99, 102, 241, 0.55);
+      background: linear-gradient(180deg, rgba(17, 24, 52, 0.94), rgba(9, 15, 34, 0.9));
+      padding: 12px 18px;
+    }
+
+    .q-meta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .subject-pill {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(34, 211, 238, 0.18);
+      color: var(--cyan);
+      border: 1px solid rgba(34, 211, 238, 0.4);
+    }
+
+    .subject-pill.ipa {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+
+    .q-number {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .q-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(0.98rem, 1.9vw, 1.32rem);
+      font-weight: 700;
+      line-height: 1.3;
+      color: #ffffff;
+    }
+
+    /* Tombol Aksi Kanan Atas */
+    .controls-card {
+      display: flex;
+      gap: 8px;
+      padding: 8px;
+      align-items: center;
+    }
+
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: var(--text-main);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .icon-btn:hover {
+      background: rgba(34, 211, 238, 0.22);
+      border-color: var(--cyan);
+    }
+
+    /* Bar Bawah: Status Sensor + Mini Avatar 3 Jalur */
+    .hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+    }
+
+    .feedback-toast {
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 14px;
+      padding: 10px 14px;
+      max-width: 390px;
+      font-size: 0.86rem;
+      line-height: 1.35;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: all 0.25s ease;
+    }
+
+    .feedback-toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .feedback-toast.good {
+      border-color: var(--emerald);
+      color: #a7f3d0;
+    }
+
+    .feedback-toast.bad {
+      border-color: var(--rose);
+      color: #fecdd3;
+    }
+
+    /* Pojok Kanan Bawah: Indikator Status Gerakan & Mini-Avatar */
+    .motion-hud {
+      width: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 11px 13px;
+    }
+
+    .motion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .sensor-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .dot-bulb {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #64748b;
+      box-shadow: 0 0 8px rgba(100, 116, 139, 0.6);
+    }
+
+    .dot-bulb.active {
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .motion-badge {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-align: center;
+      padding: 5px 10px;
+      border-radius: 10px;
+      background: rgba(148, 163, 184, 0.16);
+      color: #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      transition: all 0.15s ease;
+    }
+
+    .motion-badge.BERLARI {
+      background: rgba(16, 185, 129, 0.25);
+      color: #6ee7b7;
+      border-color: var(--emerald);
+    }
+
+    .motion-badge.LOMPAT {
+      background: rgba(34, 211, 238, 0.26);
+      color: #67e8f9;
+      border-color: var(--cyan);
+    }
+
+    .motion-badge.MENUNDUK {
+      background: rgba(245, 158, 11, 0.26);
+      color: #fcd34d;
+      border-color: var(--amber);
+    }
+
+    .motion-badge.DIAM {
+      background: rgba(244, 63, 94, 0.2);
+      color: #fda4af;
+      border-color: rgba(244, 63, 94, 0.5);
+    }
+
+    /* Mini-Avatar 3 Jalur */
+    .mini-track {
+      position: relative;
+      height: 54px;
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      overflow: hidden;
+    }
+
+    .mini-lane {
+      border-right: 1px dashed rgba(148, 163, 184, 0.24);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 3px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: rgba(148, 163, 184, 0.7);
+    }
+
+    .mini-lane:last-child {
+      border-right: none;
+    }
+
+    .mini-avatar {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      width: 28px;
+      height: 28px;
+      transform: translateX(-50%);
+      transition: left 0.14s ease-out, bottom 0.12s ease-out, transform 0.12s ease-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .mini-avatar svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.75));
+    }
+
+    .mini-avatar.jumping {
+      bottom: 24px;
+      transform: translateX(-50%) scale(1.12);
+    }
+
+    .mini-avatar.ducking {
+      bottom: 10px;
+      transform: translateX(-50%) scaleY(0.62) scaleX(1.2);
+    }
+
+    .pace-bar-wrap {
+      height: 6px;
+      width: 100%;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .pace-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--cyan), var(--emerald));
+      transition: width 0.12s linear;
+    }
+
+    /* Layar Overlay (Menu Awal, Kalibrasi, Game Over) */
+    .screen-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      background: radial-gradient(circle at top, rgba(22, 34, 72, 0.92), rgba(7, 11, 24, 0.96));
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .modal-box {
+      width: 100%;
+      max-width: 560px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      border-radius: 24px;
+      padding: clamp(20px, 3vw, 30px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+    }
+
+    .brand-tag {
+      display: inline-block;
+      font-size: 0.74rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--cyan);
+      background: rgba(34, 211, 238, 0.14);
+      border: 1px solid rgba(34, 211, 238, 0.32);
+      border-radius: 999px;
+      padding: 4px 12px;
+      margin-bottom: 10px;
+    }
+
+    .modal-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(1.6rem, 3.6vw, 2.2rem);
+      font-weight: 900;
+      line-height: 1.15;
+      background: linear-gradient(90deg, #ffffff, #67e8f9, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .modal-desc {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-bottom: 5px;
+    }
+
+    .input-group input {
+      width: 100%;
+      background: rgba(2, 6, 23, 0.75);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 12px;
+      padding: 11px 13px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
+    }
+
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .guide-item {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 9px 11px;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      color: #e2e8f0;
+    }
+
+    .guide-item strong {
+      color: var(--cyan);
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      flex: 1;
+      min-width: 180px;
+      background: linear-gradient(135deg, #06b6d4, #10b981);
+      color: #04131c;
+      border: none;
+      border-radius: 14px;
+      padding: 13px 18px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.02rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(16, 185, 129, 0.32);
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.06);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .status-note {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    .status-note.error {
+      color: #fda4af;
+    }
+
+    /* Overlay Kalibrasi 2 Detik */
+    .calibration-box {
+      background: rgba(7, 11, 24, 0.65);
+      backdrop-filter: blur(4px);
+    }
+
+    .calib-card {
+      max-width: 440px;
+      text-align: center;
+    }
+
+    .calib-ring {
+      width: 112px;
+      height: 112px;
+      margin: 14px auto;
+      border-radius: 50%;
+      border: 6px solid rgba(34, 211, 238, 0.25);
+      border-top-color: var(--cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.3rem;
+      font-weight: 900;
+      color: #ffffff;
+      animation: spinBorder 1s linear infinite;
+    }
+
+    .calib-ring span {
+      animation: counterSpin 1s linear infinite;
+    }
+
+    @keyframes spinBorder {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes counterSpin {
+      to { transform: rotate(-360deg); }
+    }
+
+    .calib-progress {
+      height: 10px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 14px 0 8px;
+    }
+
+    .calib-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--cyan), var(--emerald));
+      transition: width 0.08s linear;
+    }
+
+    /* Layar Game Over & Leaderboard */
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .summary-pill {
+      background: rgba(30, 41, 59, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 14px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .summary-pill .lbl {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .summary-pill .val {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: #fff;
+      margin-top: 2px;
+    }
+
+    .lb-wrap {
+      background: rgba(2, 6, 23, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+
+    .lb-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .lb-head h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1rem;
+      color: #fde68a;
+    }
+
+    .lb-status {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+
+    .lb-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+
+    .lb-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      padding: 6px 6px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .lb-table td {
+      padding: 8px 6px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      color: #f1f5f9;
+    }
+
+    .lb-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .lb-table td.score-col {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      color: var(--cyan);
+      text-align: right;
+    }
+
+    .lb-table th.score-col {
+      text-align: right;
+    }
+
+    .lb-highlight {
+      background: rgba(34, 211, 238, 0.12);
+    }
+
+    /* Responsif Layar Kecil / Ponsel */
+    @media (max-width: 780px) {
+      .hud-top {
+        grid-template-columns: 1fr auto;
+      }
+      .question-board {
+        grid-column: 1 / -1;
+        order: 3;
+      }
+      .stats-card {
+        min-width: 145px;
+      }
+      .form-grid, .guide-grid {
+        grid-template-columns: 1fr;
+      }
+      .motion-hud {
+        width: 185px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Elemen Video Webcam Asli (Disembunyikan di luar layar agar tidak di-throttle browser) -->
+  <video id="webcamVideo" autoplay playsinline muted width="640" height="480"></video>
+
+  <!-- Kanvas Render Utama 60 FPS -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HUD Permainan -->
+  <div id="gameHud" class="hud-layer hidden">
+    <div class="hud-top">
+      <!-- Skor, Nyawa, Level Kecepatan -->
+      <div class="hud-card stats-card">
+        <div class="stats-row">
+          <div>
+            <div class="stat-label">Skor</div>
+            <div id="hudScore" class="stat-value">0</div>
+          </div>
+          <div>
+            <div class="stat-label">Nyawa</div>
+            <div id="hudHearts" class="hearts" aria-label="Sisa nyawa"></div>
+          </div>
+        </div>
+        <div id="hudSpeedBadge" class="speed-badge">⚡ Kecepatan Lv. 1</div>
+      </div>
+
+      <!-- Papan Soal PJOK & IPA -->
+      <div class="hud-card question-board">
+        <div class="q-meta">
+          <span id="hudSubject" class="subject-pill">PJOK</span>
+          <span id="hudQNumber" class="q-number">Soal #1</span>
+        </div>
+        <div id="hudQuestion" class="q-text">Memuat soal...</div>
+      </div>
+
+      <!-- Kontrol Cepat -->
+      <div class="hud-card controls-card">
+        <button id="btnRecalibrate" class="icon-btn" title="Kalibrasi ulang tinggi bahu">🎯 Kalibrasi</button>
+        <button id="btnFullscreenHud" class="icon-btn" title="Layar Penuh">⛶ Layar Penuh</button>
+      </div>
+    </div>
+
+    <div class="hud-bottom">
+      <!-- Notifikasi Pembahasan Singkat -->
+      <div id="feedbackToast" class="feedback-toast"></div>
+
+      <!-- Indikator Status Gerakan + Mini-Avatar 3 Jalur -->
+      <div class="hud-card motion-hud">
+        <div class="motion-header">
+          <span class="sensor-dot">
+            <span id="sensorBulb" class="dot-bulb"></span>
+            <span id="sensorModeLabel">Sensor Pose</span>
+          </span>
+          <span id="hudLaneText" style="font-size:0.72rem;font-weight:700;color:#67e8f9;">TENGAH</span>
+        </div>
+
+        <div id="hudMotionBadge" class="motion-badge DIAM">DIAM</div>
+
+        <!-- Mini-Avatar Karakter mengikuti posisi tubuh pemain di 3 jalur -->
+        <div class="mini-track" aria-label="Posisi mini avatar di 3 jalur">
+          <div class="mini-lane">KIRI</div>
+          <div class="mini-lane">TENGAH</div>
+          <div class="mini-lane">KANAN</div>
+          <div id="miniAvatar" class="mini-avatar">
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="20" cy="9" r="5" fill="#22d3ee" />
+              <path d="M12 22C12 17.5 15.5 15 20 15C24.5 15 28 17.5 28 22V28H23V37H17V28H12V22Z" fill="#10b981" />
+              <path d="M10 21L14 17M30 21L26 17" stroke="#67e8f9" stroke-width="3" stroke-linecap="round" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="pace-bar-wrap" title="Intensitas lari di tempat">
+          <div id="paceBarFill" class="pace-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYAR AWAL (INPUT IDENTITAS & PANDUAN) -->
+  <div id="startScreen" class="screen-overlay">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span class="brand-tag">PJOK &amp; IPA SMP • AR Pose Game</span>
+        <button id="btnFullscreenStart" class="icon-btn" type="button">⛶ Layar Penuh</button>
+      </div>
+      <h1 class="modal-title">EduRunner AR: Lari Rintangan Pengetahuan</h1>
+      <p class="modal-desc">
+        Berlari di tempat menggunakan kamera untuk melewati rintangan fisik dan memilih gerbang jawaban yang benar tentang <strong>Gaya Hidup Sehat</strong> dan <strong>Sistem Gerak Manusia</strong>!
+      </p>
+
+      <div class="form-grid">
+        <div class="input-group">
+          <label for="inputNama">Nama Lengkap Siswa</label>
+          <input id="inputNama" type="text" placeholder="Contoh: Raka Pratama" maxlength="32" autocomplete="name" />
+        </div>
+        <div class="input-group">
+          <label for="inputKelas">Kelas</label>
+          <input id="inputKelas" type="text" placeholder="Contoh: 8A" maxlength="12" />
+        </div>
+      </div>
+
+      <div class="guide-grid">
+        <div class="guide-item">
+          <strong>🏃 Lari di Tempat / Diam</strong>
+          Lari di tempat agar karakter melaju kencang; berhenti diam untuk memperlambat.
+        </div>
+        <div class="guide-item">
+          <strong>↔️ Geser Kiri / Tengah / Kanan</strong>
+          Geser tubuhmu ke kiri atau kanan untuk memilih jalur gerbang jawaban.
+        </div>
+        <div class="guide-item">
+          <strong>⬆️ Melompat (Batu Rendah)</strong>
+          Lompat ke atas saat melihat batu rendah berwarna kuning-oranye.
+        </div>
+        <div class="guide-item">
+          <strong>⬇️ Menunduk (Palang Tinggi)</strong>
+          Bungkukkan/jongkokkan bahu saat melewati palang merah tinggi.
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnStartCamera" class="btn-primary" type="button">📷 Mulai dengan Kamera AR</button>
+        <button id="btnStartKeyboard" class="btn-secondary" type="button">⌨️ Mode Keyboard</button>
+      </div>
+      <div id="startStatus" class="status-note">Pastikan posisi berdiri ±1,5–2 meter dari kamera dengan pencahayaan cukup.</div>
+    </div>
+  </div>
+
+  <!-- LAYAR KALIBRASI 2 DETIK -->
+  <div id="calibrationScreen" class="screen-overlay calibration-box hidden">
+    <div class="modal-box calib-card">
+      <span class="brand-tag">Fase Kalibrasi Sensor</span>
+      <h2 class="modal-title" style="font-size:1.6rem;">Berdiri Tegak &amp; Netral</h2>
+      <p class="modal-desc" style="margin-bottom:8px;">
+        Hadapkan tubuh ke kamera di tengah layar selama <strong>2 detik</strong> untuk merekam tinggi bahu dasar (<em>baseline</em>).
+      </p>
+      <div class="calib-ring"><span id="calibTimerText">2.0</span></div>
+      <div class="calib-progress">
+        <div id="calibProgressBar" class="calib-progress-bar"></div>
+      </div>
+      <div id="calibStatusText" class="status-note">Mendeteksi bahu dan kerangka tubuh...</div>
+    </div>
+  </div>
+
+  <!-- LAYAR GAME OVER & LEADERBOARD TOP 5 -->
+  <div id="gameOverScreen" class="screen-overlay hidden">
+    <div class="modal-box">
+      <span class="brand-tag">Permainan Selesai • Single Player</span>
+      <h2 class="modal-title">Luar Biasa, <span id="goPlayerName">Pelari</span>!</h2>
+      <p class="modal-desc" style="margin-bottom:10px;">
+        Nyawa habis setelah 3 kesalahan/tabrakan. Lihat peringkat terbaikmu di bawah ini!
+      </p>
+
+      <div class="summary-strip">
+        <div class="summary-pill">
+          <div class="lbl">Skor Akhir</div>
+          <div id="goFinalScore" class="val" style="color:var(--cyan);">0</div>
+        </div>
+        <div class="summary-pill">
+          <div class="lbl">Jawaban Benar</div>
+          <div id="goCorrectCount" class="val" style="color:var(--emerald);">0</div>
+        </div>
+        <div class="summary-pill">
+          <div class="lbl">Level Laju</div>
+          <div id="goMaxLevel" class="val" style="color:var(--amber);">1</div>
+        </div>
+      </div>
+
+      <div class="lb-wrap">
+        <div class="lb-head">
+          <h3>🏆 Leaderboard Top 5</h3>
+          <span id="lbSyncStatus" class="lb-status">Mengirim skor...</span>
+        </div>
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nama</th>
+              <th>Kelas</th>
+              <th class="score-col">Skor</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnPlayAgain" class="btn-primary" type="button">🔄 Main Lagi</button>
+        <button id="btnBackMenu" class="btn-secondary" type="button">🏠 Ganti Pemain</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================================
+       1. KONFIGURASI UTAMA & ENDPOINT GOOGLE APPS SCRIPT
+       ========================================================================= */
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzLtHvFmnaK9Wn2yVI13AwC9dFVMzPMbTM54rEbwMoI3XuSGOX8tyUzyqb8D82ozNn8LQ/exec';
+
+    const GAME_CONFIG = {
+      MAX_LIVES: 3,
+      POINTS_CORRECT: 10,
+      POINTS_WRONG: -15,
+      SPEED_STEP_POINTS: 30,
+      CALIBRATION_DURATION_MS: 2000,
+      BASE_TRACK_SPEED: 0.44,       // Unit kedalaman z per detik saat berlari di level 1
+      SPEED_INCREMENT_PER_LV: 0.08, // Tambahan kecepatan setiap kelipatan 30 poin
+      LOCAL_STORAGE_KEY: 'edurunner_ar_top5_v1',
+      GAME_MODE: 'Single Player'
+    };
+
+    /* =========================================================================
+       2. BANK SOAL PJOK & IPA SMP (GAYA HIDUP SEHAT & SISTEM GERAK MANUSIA)
+       ========================================================================= */
+    const QUESTION_BANK = [
+      {
+        subject: 'IPA',
+        question: 'Sendi yang memungkinkan gerakan ke segala arah, seperti pada bahu dan panggul, disebut sendi...',
+        options: ['Engsel', 'Peluru', 'Putar'],
+        correctIndex: 1,
+        explanation: 'Sendi peluru pada bahu dan panggul memungkinkan gerakan bebas ke segala arah.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Pemanasan (warming up) sebelum olahraga bertujuan utama untuk...',
+        options: ['Mencegah cedera', 'Membuat cepat lelah', 'Menurunkan detak'],
+        correctIndex: 0,
+        explanation: 'Pemanasan meningkatkan suhu otot dan aliran darah sehingga mengurangi risiko cedera.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Otot yang bekerja di bawah kesadaran kita dan melekat pada rangka tulang adalah...',
+        options: ['Otot polos', 'Otot jantung', 'Otot lurik'],
+        correctIndex: 2,
+        explanation: 'Otot lurik (otot rangka) bekerja secara sadar untuk menggerakkan tulang.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Zat gizi utama yang berfungsi sebagai sumber energi terbesar saat berlari adalah...',
+        options: ['Karbohidrat', 'Vitamin C', 'Mineral zat besi'],
+        correctIndex: 0,
+        explanation: 'Karbohidrat dipecah menjadi glukosa sebagai bahan bakar utama aktivitas fisik.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Kelainan tulang belakang yang melengkung terlalu ke samping seperti huruf S disebut...',
+        options: ['Kifosis', 'Lordosis', 'Skoliosis'],
+        correctIndex: 2,
+        explanation: 'Skoliosis adalah kelainan tulang belakang yang membengkok ke arah samping.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Durasi tidur malam ideal bagi remaja usia SMP agar pertumbuhan dan fokus optimal adalah...',
+        options: ['4 - 5 jam', '8 - 10 jam', '13 - 15 jam'],
+        correctIndex: 1,
+        explanation: 'Remaja SMP membutuhkan 8–10 jam tidur per malam untuk pemulihan tubuh dan otak.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Sendi yang hanya bergerak satu arah seperti pintu, contohnya pada siku dan lutut, adalah...',
+        options: ['Sendi engsel', 'Sendi pelana', 'Sendi geser'],
+        correctIndex: 0,
+        explanation: 'Sendi engsel pada siku dan lutut hanya memungkinkan gerakan menekuk dan meluruskan.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Latihan lari jarak menengah atau jogging secara rutin terutama melatih daya tahan...',
+        options: ['Otot jari', 'Jantung & paru', 'Indra penciuman'],
+        correctIndex: 1,
+        explanation: 'Latihan aerobik seperti jogging meningkatkan kapasitas kardiorespirasi (jantung dan paru).'
+      },
+      {
+        subject: 'IPA',
+        question: 'Kekurangan vitamin D dan kalsium sejak dini dapat menyebabkan tulang rapuh yang disebut...',
+        options: ['Rakhitis', 'Asma', 'Anemia'],
+        correctIndex: 0,
+        explanation: 'Rakhitis terjadi akibat defisiensi vitamin D/kalsium sehingga tulang menjadi lunak atau melengkung.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Kebiasaan duduk membungkuk terlalu lama saat bermain gawai dapat memicu gangguan...',
+        options: ['Kifosis', 'Tifus', 'Miopi tulang'],
+        correctIndex: 0,
+        explanation: 'Duduk membungkuk terus-menerus membuat tulang punggung atas melengkung ke belakang (kifosis).'
+      },
+      {
+        subject: 'IPA',
+        question: 'Jaringan ikat kuat yang menghubungkan otot dengan tulang disebut...',
+        options: ['Ligamen', 'Tendon', 'Kartilago'],
+        correctIndex: 1,
+        explanation: 'Tendon menghubungkan otot ke tulang, sedangkan ligamen menghubungkan tulang ke tulang.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Setelah berolahraga berat, gerakan pendinginan (cooling down) berfungsi untuk...',
+        options: ['Menormalkan nadi', 'Menambah cedera', 'Menghentikan keringat'],
+        correctIndex: 0,
+        explanation: 'Pendinginan membantu detak jantung dan aliran darah kembali normal secara bertahap.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Tulang rusuk dan tulang dada manusia berfungsi utama untuk melindungi organ...',
+        options: ['Otak besar', 'Jantung & paru', 'Ginjal bawah'],
+        correctIndex: 1,
+        explanation: 'Rongga dada yang dibentuk tulang rusuk melindungi organ vital jantung dan paru-paru.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Dalam konsep "Isi Piringku", setengah piring makan sehat sebaiknya diisi oleh...',
+        options: ['Gula & garam', 'Sayur & buah', 'Gorengan saja'],
+        correctIndex: 1,
+        explanation: 'Pedoman gizi seimbang menganjurkan 50% piring terdiri dari sayur dan buah.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Gerakan meluruskan lengan bawah terjadi karena otot bisep berelaksasi dan otot trisep...',
+        options: ['Berkontraksi', 'Ikut relaksasi', 'Menghilang'],
+        correctIndex: 0,
+        explanation: 'Bisep dan trisep bekerja secara antagonis (berlawanan) saat menekuk dan meluruskan lengan.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Minum air putih yang cukup sebelum dan sesudah olahraga mencegah terjadinya...',
+        options: ['Dehidrasi', 'Hipertensi', 'Alergi dingin'],
+        correctIndex: 0,
+        explanation: 'Cairan tubuh yang hilang lewat keringat harus diganti agar terhindar dari dehidrasi.'
+      },
+      {
+        subject: 'IPA',
+        question: 'Tulang pipa (tulang panjang) yang menjadi penopang utama saat kita melompat adalah...',
+        options: ['Tulang tengkorak', 'Tulang paha', 'Tulang telinga'],
+        correctIndex: 1,
+        explanation: 'Tulang paha (femur) adalah tulang pipa terkuat dan terpanjang yang menopang tubuh.'
+      },
+      {
+        subject: 'PJOK',
+        question: 'Komponen kebugaran jasmani untuk mengubah arah lari dengan cepat tanpa kehilangan keseimbangan adalah...',
+        options: ['Kelincahan', 'Kelelahan', 'Ketahanan napas'],
+        correctIndex: 0,
+        explanation: 'Kelincahan (agility) adalah kemampuan tubuh mengubah arah dan posisi dengan cepat dan tepat.'
+      }
+    ];
+
+    /* =========================================================================
+       3. AUDIO SYNTHESIZER (WEB AUDIO API - TANPA FILE MP3 EKSTERNAL)
+       ========================================================================= */
+    const AudioEngine = (() => {
+      let ctx = null;
+
+      function ensureContext() {
+        if (!ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) ctx = new AudioCtx();
+        }
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      }
+
+      function playTone(freq, type, duration, volume = 0.14, endFreq = null, delay = 0) {
+        ensureContext();
+        if (!ctx) return;
+        const now = ctx.currentTime + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (endFreq !== null) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), now + duration);
+        }
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+      }
+
+      return {
+        click() {
+          playTone(540, 'triangle', 0.07, 0.12, 760);
+        },
+        calibrateTick() {
+          playTone(660, 'sine', 0.08, 0.1);
+        },
+        calibrateDone() {
+          playTone(523.25, 'triangle', 0.12, 0.14, null, 0);
+          playTone(659.25, 'triangle', 0.12, 0.14, null, 0.09);
+          playTone(783.99, 'triangle', 0.2, 0.16, null, 0.18);
+        },
+        correct() {
+          playTone(587.33, 'sine', 0.11, 0.16, null, 0);
+          playTone(880, 'triangle', 0.18, 0.16, null, 0.09);
+          playTone(1174.66, 'sine', 0.24, 0.12, null, 0.18);
+        },
+        wrong() {
+          playTone(220, 'sawtooth', 0.16, 0.14, 130, 0);
+          playTone(150, 'sawtooth', 0.24, 0.15, 85, 0.14);
+        },
+        hit() {
+          playTone(140, 'square', 0.12, 0.18, 55, 0);
+          playTone(95, 'sawtooth', 0.2, 0.16, 42, 0.05);
+        },
+        dodge() {
+          playTone(420, 'sine', 0.09, 0.11, 680, 0);
+        },
+        gameOver() {
+          playTone(392, 'sawtooth', 0.18, 0.13, null, 0);
+          playTone(349.23, 'sawtooth', 0.18, 0.13, null, 0.18);
+          playTone(311.13, 'sawtooth', 0.22, 0.13, null, 0.36);
+          playTone(261.63, 'triangle', 0.45, 0.16, 180, 0.56);
+        }
+      };
+    })();
+
+    /* =========================================================================
+       4. REFERENSI DOM & STATE APLIKASI
+       ========================================================================= */
+    const videoEl = document.getElementById('webcamVideo');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const startScreen = document.getElementById('startScreen');
+    const calibrationScreen = document.getElementById('calibrationScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const gameHud = document.getElementById('gameHud');
+
+    const inputNama = document.getElementById('inputNama');
+    const inputKelas = document.getElementById('inputKelas');
+    const startStatus = document.getElementById('startStatus');
+
+    const hudScore = document.getElementById('hudScore');
+    const hudHearts = document.getElementById('hudHearts');
+    const hudSpeedBadge = document.getElementById('hudSpeedBadge');
+    const hudSubject = document.getElementById('hudSubject');
+    const hudQNumber = document.getElementById('hudQNumber');
+    const hudQuestion = document.getElementById('hudQuestion');
+    const hudMotionBadge = document.getElementById('hudMotionBadge');
+    const hudLaneText = document.getElementById('hudLaneText');
+    const sensorBulb = document.getElementById('sensorBulb');
+    const sensorModeLabel = document.getElementById('sensorModeLabel');
+    const miniAvatar = document.getElementById('miniAvatar');
+    const paceBarFill = document.getElementById('paceBarFill');
+    const feedbackToast = document.getElementById('feedbackToast');
+
+    const calibTimerText = document.getElementById('calibTimerText');
+    const calibProgressBar = document.getElementById('calibProgressBar');
+    const calibStatusText = document.getElementById('calibStatusText');
+
+    const goPlayerName = document.getElementById('goPlayerName');
+    const goFinalScore = document.getElementById('goFinalScore');
+    const goCorrectCount = document.getElementById('goCorrectCount');
+    const goMaxLevel = document.getElementById('goMaxLevel');
+    const lbSyncStatus = document.getElementById('lbSyncStatus');
+    const leaderboardBody = document.getElementById('leaderboardBody');
+
+    // State Global Game
+    const state = {
+      phase: 'MENU', // MENU | CALIBRATING | PLAYING | GAMEOVER
+      controlMode: 'CAMERA', // CAMERA | KEYBOARD
+      playerName: 'Siswa',
+      playerClass: '-',
+      score: 0,
+      lives: GAME_CONFIG.MAX_LIVES,
+      correctCount: 0,
+      speedLevel: 1,
+      maxSpeedLevel: 1,
+      questionsAnswered: 0,
+
+      // Posisi & Gerakan Karakter
+      lane: 1,             // 0 = Kiri, 1 = Tengah, 2 = Kanan
+      visualLaneX: 1,      // Interpolasi halus untuk animasi karakter
+      posture: 'DIAM',     // BERLARI | DIAM | LOMPAT | MENUNDUK
+      isRunning: false,
+      runIntensity: 0,     // 0..1
+      currentSpeed: 0,     // Kecepatan maju aktual
+      idleTimer: 0,
+      roadOffset: 0,
+      runnerAnimPhase: 0,
+
+      // Daftar Soal & Entitas Lintasan
+      questionDeck: [],
+      activeQuestion: null,
+      entities: [],        // { type: 'rock'|'bar'|'gate', z, lanes, question, resolved }
+      waveStep: 0,         // 0,1 = rintangan fisik, 2 = gerbang jawaban
+      distanceSinceSpawn: 0,
+
+      // Efek Visual
+      particles: [],
+      floatingTexts: [],
+      shakeTimer: 0,
+      toastTimer: 0,
+      speedUpBannerTimer: 0
+    };
+
+    // State Sensor Pose (MediaPipe)
+    const poseState = {
+      poseInstance: null,
+      stream: null,
+      isCameraReady: false,
+      isInferring: false,
+      lastLandmarks: null,
+      detected: false,
+
+      // Kalibrasi 2 detik
+      calibStartTime: 0,
+      calibSamplesY: [],
+      calibSamplesWidth: [],
+      baselineY: 0.48,
+      baseShoulderWidth: 0.22,
+      calibrated: false,
+
+      // Deteksi Lari di Tempat (gerakan vertikal bahu & pinggul)
+      motionHistory: [],     // { t, y, hipY, tilt }
+      lastRunTriggerTime: 0,
+      smoothedCenterX: 0.5,
+      smoothedShoulderY: 0.48
+    };
+
+    // State Keyboard Cadangan
+    const keysPressed = {
+      up: false,
+      down: false,
+      run: false
+    };
+
+    /* =========================================================================
+       5. MANAJEMEN UKURAN KANVAS & FULLSCREEN API
+       ========================================================================= */
+    let viewW = window.innerWidth;
+    let viewH = window.innerHeight;
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      viewW = window.innerWidth;
+      viewH = window.innerHeight;
+      canvas.width = Math.floor(viewW * dpr);
+      canvas.height = Math.floor(viewH * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function toggleFullscreen() {
+      AudioEngine.click();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    document.getElementById('btnFullscreenStart').addEventListener('click', toggleFullscreen);
+    document.getElementById('btnFullscreenHud').addEventListener('click', toggleFullscreen);
+
+    /* =========================================================================
+       6. INISIALISASI KAMERA & MEDIAPIPE POSE (TERPISAH DARI RENDER LOOP 60 FPS)
+       ========================================================================= */
+    async function initCameraAndPose() {
+      if (poseState.isCameraReady && poseState.poseInstance) return true;
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Browser tidak mendukung akses kamera (getUserMedia).');
+      }
+      if (typeof Pose === 'undefined') {
+        throw new Error('Pustaka MediaPipe Pose gagal dimuat. Periksa koneksi internet HTTPS.');
+      }
+
+      startStatus.textContent = 'Meminta izin kamera dan memuat model MediaPipe Pose...';
+      startStatus.classList.remove('error');
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        },
+        audio: false
+      });
+
+      poseState.stream = stream;
+      videoEl.srcObject = stream;
+      await new Promise((resolve) => {
+        videoEl.onloadedmetadata = () => {
+          videoEl.play().then(resolve).catch(resolve);
+        };
+      });
+
+      const pose = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`
+      });
+
+      pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      pose.onResults(handlePoseResults);
+      poseState.poseInstance = pose;
+      poseState.isCameraReady = true;
+
+      // Jalankan loop inferensi AI secara asinkron & terpisah dari requestAnimationFrame grafis
+      startPoseInferenceLoop();
+      return true;
+    }
+
+    function startPoseInferenceLoop() {
+      async function processFrame() {
+        if (poseState.isCameraReady && poseState.poseInstance && videoEl.readyState >= 2 && !poseState.isInferring) {
+          poseState.isInferring = true;
+          try {
+            await poseState.poseInstance.send({ image: videoEl });
+          } catch (err) {
+            // Abaikan error frame sesaat agar aplikasi tidak berhenti
+          } finally {
+            poseState.isInferring = false;
+          }
+        }
+        // Jadwalkan frame deteksi berikutnya (~30 Hz cukup responsif tanpa membebani CPU)
+        setTimeout(processFrame, 32);
+      }
+      processFrame();
+    }
+
+    /* =========================================================================
+       7. PEMROSESAN GESTUR TUBUH (KALIBRASI, LARI, LOMPAT, NUNDUK, GESER)
+       ========================================================================= */
+    function handlePoseResults(results) {
+      const lm = results.poseLandmarks;
+      if (!lm || !lm[11] || !lm[12]) {
+        poseState.detected = false;
+        poseState.lastLandmarks = null;
+        return;
+      }
+
+      const leftShoulder = lm[11];
+      const rightShoulder = lm[12];
+      const visibilityOk = (leftShoulder.visibility || 0) > 0.4 && (rightShoulder.visibility || 0) > 0.4;
+
+      if (!visibilityOk) {
+        poseState.detected = false;
+        poseState.lastLandmarks = lm;
+        return;
+      }
+
+      poseState.detected = true;
+      poseState.lastLandmarks = lm;
+
+      // Mirroring koordinat X agar gerakan ke kiri pemain masuk ke jalur kiri layar
+      const rawCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+      const mirroredX = 1 - rawCenterX;
+      const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+      const shoulderWidth = Math.hypot(leftShoulder.x - rightShoulder.x, leftShoulder.y - rightShoulder.y);
+      const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
+
+      // Pinggul opsional sebagai penguat sinyal lari di tempat
+      const hasHips = lm[23] && lm[24] && (lm[23].visibility || 0) > 0.4 && (lm[24].visibility || 0) > 0.4;
+      const hipY = hasHips ? (lm[23].y + lm[24].y) / 2 : shoulderY;
+
+      // Smoothing ringan untuk mengurangi jitter kamera
+      poseState.smoothedCenterX = poseState.smoothedCenterX * 0.55 + mirroredX * 0.45;
+      poseState.smoothedShoulderY = poseState.smoothedShoulderY * 0.45 + shoulderY * 0.55;
+
+      const now = performance.now();
+
+      // A. Fase Kalibrasi 2 Detik: rekam tinggi bahu dasar (baselineY)
+      if (state.phase === 'CALIBRATING') {
+        poseState.calibSamplesY.push(shoulderY);
+        poseState.calibSamplesWidth.push(shoulderWidth);
+        return;
+      }
+
+      if (state.phase !== 'PLAYING' || state.controlMode !== 'CAMERA') return;
+
+      // B. Deteksi Jalur (Kiri / Tengah / Kanan)
+      const cx = poseState.smoothedCenterX;
+      if (cx < 0.39) {
+        state.lane = 0;
+      } else if (cx > 0.61) {
+        state.lane = 2;
+      } else {
+        state.lane = 1;
+      }
+
+      // C. Deteksi Melompat & Menunduk berbasis baselineY & skala lebar bahu adaptif
+      const scaleRef = Math.min(0.42, Math.max(0.13, poseState.baseShoulderWidth));
+      const jumpThreshold = Math.max(0.042, scaleRef * 0.25);
+      const duckThreshold = Math.max(0.055, scaleRef * 0.33);
+      const deltaFromBaseline = poseState.smoothedShoulderY - poseState.baselineY;
+
+      let postureNow = 'DIAM';
+      if (deltaFromBaseline < -jumpThreshold) {
+        postureNow = 'LOMPAT';
+      } else if (deltaFromBaseline > duckThreshold) {
+        postureNow = 'MENUNDUK';
+      }
+
+      // D. Deteksi Lari di Tempat vs Diam (osilasi vertikal bahu/pinggul dalam jendela 480 ms)
+      poseState.motionHistory.push({ t: now, y: shoulderY, hipY, tilt: shoulderTilt });
+      while (poseState.motionHistory.length > 0 && now - poseState.motionHistory[0].t > 480) {
+        poseState.motionHistory.shift();
+      }
+
+      let verticalTravel = 0;
+      let hipTravel = 0;
+      let tiltVariance = 0;
+      for (let i = 1; i < poseState.motionHistory.length; i++) {
+        verticalTravel += Math.abs(poseState.motionHistory[i].y - poseState.motionHistory[i - 1].y);
+        hipTravel += Math.abs(poseState.motionHistory[i].hipY - poseState.motionHistory[i - 1].hipY);
+        tiltVariance += Math.abs(poseState.motionHistory[i].tilt - poseState.motionHistory[i - 1].tilt);
+      }
+
+      // Skor aktivitas vertikal gabungan
+      const activityMetric = verticalTravel * 1.15 + hipTravel * 0.65 + tiltVariance * 0.9;
+      const runThreshold = Math.max(0.048, scaleRef * 0.24);
+
+      if (activityMetric > runThreshold) {
+        poseState.lastRunTriggerTime = now;
+        state.runIntensity = Math.min(1, activityMetric / (runThreshold * 2.2));
+      } else {
+        state.runIntensity = Math.max(0, state.runIntensity - 0.08);
+      }
+
+      // Jeda toleransi 650 ms antar langkah kaki agar status BERLARI tetap stabil
+      const runningActive = (now - poseState.lastRunTriggerTime) < 650;
+      state.isRunning = runningActive;
+
+      if (postureNow === 'LOMPAT' || postureNow === 'MENUNDUK') {
+        state.posture = postureNow;
+        // Melompat atau menunduk saat sedang berlari tetap mempertahankan momentum sesaat
+        if (runningActive) poseState.lastRunTriggerTime = now;
+      } else {
+        state.posture = runningActive ? 'BERLARI' : 'DIAM';
+      }
+    }
+
+    /* =========================================================================
+       8. KONTROL KEYBOARD CADANGAN (OPSIONAL TANPA KAMERA)
+       ========================================================================= */
+    window.addEventListener('keydown', (e) => {
+      if (state.phase !== 'PLAYING' || state.controlMode !== 'KEYBOARD') return;
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+        state.lane = Math.max(0, state.lane - 1);
+      } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+        state.lane = Math.min(2, state.lane + 1);
+      } else if (e.code === 'ArrowUp' || e.code === 'Space') {
+        e.preventDefault();
+        keysPressed.up = true;
+      } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+        e.preventDefault();
+        keysPressed.down = true;
+      } else if (e.code === 'KeyW' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        keysPressed.run = true;
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'ArrowUp' || e.code === 'Space') keysPressed.up = false;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') keysPressed.down = false;
+      if (e.code === 'KeyW' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') keysPressed.run = false;
+    });
+
+    function updateKeyboardControl() {
+      if (state.controlMode !== 'KEYBOARD') return;
+      state.isRunning = keysPressed.run;
+      state.runIntensity = keysPressed.run ? 0.92 : 0;
+      if (keysPressed.up) {
+        state.posture = 'LOMPAT';
+      } else if (keysPressed.down) {
+        state.posture = 'MENUNDUK';
+      } else {
+        state.posture = keysPressed.run ? 'BERLARI' : 'DIAM';
+      }
+    }
+
+    /* =========================================================================
+       9. ALUR PERMAINAN, KALIBRASI 2 DETIK & LOGIKA SOAL/RINTANGAN
+       ========================================================================= */
+    function shuffleArray(arr) {
+      const copy = arr.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function nextQuestion() {
+      if (state.questionDeck.length === 0) {
+        state.questionDeck = shuffleArray(QUESTION_BANK);
+      }
+      state.activeQuestion = state.questionDeck.pop();
+      state.questionsAnswered++;
+      updateQuestionHUD();
+    }
+
+    function updateQuestionHUD() {
+      const q = state.activeQuestion;
+      if (!q) return;
+      hudSubject.textContent = q.subject;
+      hudSubject.className = 'subject-pill' + (q.subject === 'IPA' ? ' ipa' : '');
+      hudQNumber.textContent = `Soal #${state.questionsAnswered}`;
+      hudQuestion.textContent = q.question;
+    }
+
+    function updateStatsHUD() {
+      hudScore.textContent = String(state.score);
+      hudSpeedBadge.textContent = `⚡ Kecepatan Lv. ${state.speedLevel}`;
+
+      // Render ikon hati nyawa dengan aman
+      hudHearts.innerHTML = '';
+      for (let i = 0; i < GAME_CONFIG.MAX_LIVES; i++) {
+        const span = document.createElement('span');
+        span.textContent = '❤️';
+        if (i >= state.lives) span.className = 'heart-lost';
+        hudHearts.appendChild(span);
+      }
+    }
+
+    function showToast(message, isGood) {
+      feedbackToast.textContent = message;
+      feedbackToast.className = `feedback-toast show ${isGood ? 'good' : 'bad'}`;
+      state.toastTimer = 3.2;
+    }
+
+    function startCalibration() {
+      state.phase = 'CALIBRATING';
+      poseState.calibStartTime = performance.now();
+      poseState.calibSamplesY = [];
+      poseState.calibSamplesWidth = [];
+      poseState.calibrated = false;
+
+      startScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      gameHud.classList.add('hidden');
+      calibrationScreen.classList.remove('hidden');
+      calibProgressBar.style.width = '0%';
+      calibTimerText.textContent = '2.0';
+      calibStatusText.textContent = 'Berdiri tegak menghadap kamera...';
+    }
+
+    function beginGameplay() {
+      state.phase = 'PLAYING';
+      state.score = 0;
+      state.lives = GAME_CONFIG.MAX_LIVES;
+      state.correctCount = 0;
+      state.speedLevel = 1;
+      state.maxSpeedLevel = 1;
+      state.questionsAnswered = 0;
+      state.lane = 1;
+      state.visualLaneX = 1;
+      state.posture = 'DIAM';
+      state.isRunning = false;
+      state.runIntensity = 0;
+      state.currentSpeed = 0;
+      state.idleTimer = 0;
+      state.entities = [];
+      state.particles = [];
+      state.floatingTexts = [];
+      state.waveStep = 0;
+      state.distanceSinceSpawn = 0.55;
+      state.questionDeck = shuffleArray(QUESTION_BANK);
+
+      nextQuestion();
+      updateStatsHUD();
+
+      startScreen.classList.add('hidden');
+      calibrationScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      gameHud.classList.remove('hidden');
+
+      if (state.controlMode === 'KEYBOARD') {
+        sensorModeLabel.textContent = 'Mode Keyboard';
+        sensorBulb.classList.add('active');
+        showToast('Tahan tombol W / Shift untuk berlari, Panah Kiri/Kanan geser, Spasi lompat, Bawah nunduk.', true);
+      } else {
+        sensorModeLabel.textContent = 'Sensor Pose AR';
+        showToast('Kalibrasi selesai! Lari di tempat sekarang untuk melaju!', true);
+      }
+    }
+
+    function spawnNextWave() {
+      // Siklus: Rintangan 1 -> Rintangan 2 -> Gerbang Jawaban (3 jalur)
+      if (state.waveStep < 2) {
+        const isBar = (state.waveStep === 0) ? (Math.random() < 0.5) : (Math.random() < 0.55);
+        // Buat palang tinggi atau batu rendah di seluruh 3 jalur agar pemain wajib menunduk/melompat
+        // atau di 2 jalur acak agar pemain juga bisa menghindar sambil berolahraga
+        const fullWidth = Math.random() < 0.65;
+        let occupiedLanes = [0, 1, 2];
+        if (!fullWidth) {
+          const freeLane = Math.floor(Math.random() * 3);
+          occupiedLanes = [0, 1, 2].filter((l) => l !== freeLane);
+        }
+        state.entities.push({
+          type: isBar ? 'bar' : 'rock',
+          z: 0.02,
+          lanes: occupiedLanes,
+          resolved: false
+        });
+        state.waveStep++;
+      } else {
+        // Gerbang 3 Jawaban berdasarkan soal aktif di papan atas
+        state.entities.push({
+          type: 'gate',
+          z: 0.02,
+          lanes: [0, 1, 2],
+          question: state.activeQuestion,
+          resolved: false
+        });
+        state.waveStep = 0;
+      }
+    }
+
+    function addScoreDelta(delta, labelText, color) {
+      state.score = Math.max(0, state.score + delta);
+      const newLevel = 1 + Math.floor(state.score / GAME_CONFIG.SPEED_STEP_POINTS);
+      if (newLevel > state.speedLevel) {
+        state.speedLevel = newLevel;
+        state.maxSpeedLevel = Math.max(state.maxSpeedLevel, newLevel);
+        state.speedUpBannerTimer = 2.0;
+        spawnFloatingText(viewW / 2, viewH * 0.42, `⚡ KECEPATAN LV. ${newLevel}!`, '#fde047', 1.35);
+      }
+      updateStatsHUD();
+
+      const playerScreen = projectTrackPoint(state.visualLaneX, 0.88);
+      spawnFloatingText(playerScreen.x, playerScreen.y - 68, labelText, color, 1.25);
+    }
+
+    function loseLife(reasonText) {
+      state.lives = Math.max(0, state.lives - 1);
+      state.shakeTimer = 0.35;
+      updateStatsHUD();
+      showToast(reasonText, false);
+
+      if (state.lives <= 0) {
+        triggerGameOver();
+      }
+    }
+
+    function triggerGameOver() {
+      state.phase = 'GAMEOVER';
+      AudioEngine.gameOver();
+      gameHud.classList.add('hidden');
+      gameOverScreen.classList.remove('hidden');
+
+      goPlayerName.textContent = state.playerName;
+      goFinalScore.textContent = String(state.score);
+      goCorrectCount.textContent = String(state.correctCount);
+      goMaxLevel.textContent = String(state.maxSpeedLevel);
+
+      submitScoreAndLoadLeaderboard();
+    }
+
+    /* =========================================================================
+       10. EFEK PARTIKEL LEDAKAN & TEKS POIN MELAYANG
+       ========================================================================= */
+    function spawnExplosion(x, y, color, count = 24) {
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+        const speed = 90 + Math.random() * 240;
+        state.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 60,
+          size: 3 + Math.random() * 6,
+          color,
+          life: 0.55 + Math.random() * 0.35,
+          maxLife: 0.9
+        });
+      }
+    }
+
+    function spawnFloatingText(x, y, text, color, scale = 1) {
+      state.floatingTexts.push({
+        x,
+        y,
+        text,
+        color,
+        scale,
+        vy: -95,
+        life: 1.15,
+        maxLife: 1.15
+      });
+    }
+
+    /* =========================================================================
+       11. PROYEKSI PERSPEKTIF LINTASAN 3 JALUR & RENDER LOOP 60 FPS
+       ========================================================================= */
+    function getTrackGeometry() {
+      const horizonY = viewH * 0.27;
+      const bottomY = viewH * 0.96;
+      const centerX = viewW * 0.5;
+      const topHalfW = Math.min(viewW * 0.16, 130);
+      const bottomHalfW = Math.min(viewW * 0.46, 470);
+      return { horizonY, bottomY, centerX, topHalfW, bottomHalfW };
+    }
+
+    function projectTrackPoint(laneFloat, z) {
+      const g = getTrackGeometry();
+      const depth = Math.pow(Math.max(0, z), 1.55); // Efek perspektif percepatan visual
+      const y = g.horizonY + (g.bottomY - g.horizonY) * depth;
+      const halfW = g.topHalfW + (g.bottomHalfW - g.topHalfW) * depth;
+      const laneOffset = (laneFloat - 1) * (2 / 3); // -0.666, 0, +0.666
+      const x = g.centerX + laneOffset * halfW;
+      const laneWidth = (halfW * 2) / 3;
+      const scale = 0.25 + 0.95 * depth;
+      return { x, y, halfW, laneWidth, scale, depth };
+    }
+
+    function updateSimulation(dt) {
+      // Update fase kalibrasi 2 detik
+      if (state.phase === 'CALIBRATING') {
+        const elapsed = performance.now() - poseState.calibStartTime;
+        const progress = Math.min(1, elapsed / GAME_CONFIG.CALIBRATION_DURATION_MS);
+        const remaining = Math.max(0, (GAME_CONFIG.CALIBRATION_DURATION_MS - elapsed) / 1000);
+
+        calibProgressBar.style.width = `${Math.round(progress * 100)}%`;
+        calibTimerText.textContent = remaining.toFixed(1);
+
+        if (poseState.detected) {
+          calibStatusText.textContent = `Tubuh terdeteksi! Merekam tinggi bahu (${poseState.calibSamplesY.length} sampel)...`;
+        } else {
+          calibStatusText.textContent = 'Posisikan bahu terlihat jelas di dalam kamera...';
+          // Jika belum ada sampel tubuh, tahan timer di awal agar kalibrasi akurat
+          if (poseState.calibSamplesY.length < 3 && elapsed > 600) {
+            poseState.calibStartTime = performance.now() - 400;
+          }
+        }
+
+        if (elapsed >= GAME_CONFIG.CALIBRATION_DURATION_MS) {
+          if (poseState.calibSamplesY.length > 0) {
+            const sumY = poseState.calibSamplesY.reduce((a, b) => a + b, 0);
+            const sumW = poseState.calibSamplesWidth.reduce((a, b) => a + b, 0);
+            poseState.baselineY = sumY / poseState.calibSamplesY.length;
+            poseState.baseShoulderWidth = sumW / poseState.calibSamplesWidth.length;
+            poseState.calibrated = true;
+          }
+          AudioEngine.calibrateDone();
+          beginGameplay();
+        }
+        return;
+      }
+
+      if (state.phase !== 'PLAYING') return;
+
+      updateKeyboardControl();
+
+      // Update indikator HUD Gerakan & Mini-Avatar
+      updateMotionHUD();
+
+      // Interpolasi perpindahan jalur karakter
+      state.visualLaneX += (state.lane - state.visualLaneX) * Math.min(1, dt * 14);
+
+      // Kecepatan maju: meningkat saat berlari di tempat, melambat hingga berhenti saat diam
+      const targetMaxSpeed = GAME_CONFIG.BASE_TRACK_SPEED + (state.speedLevel - 1) * GAME_CONFIG.SPEED_INCREMENT_PER_LV;
+      const isActiveMoving = state.isRunning || state.posture === 'LOMPAT' || state.posture === 'MENUNDUK';
+      const targetSpeed = isActiveMoving
+        ? targetMaxSpeed * (0.72 + 0.35 * Math.max(0.4, state.runIntensity))
+        : 0;
+
+      const accelRate = targetSpeed > state.currentSpeed ? 4.5 : 3.2;
+      state.currentSpeed += (targetSpeed - state.currentSpeed) * Math.min(1, dt * accelRate);
+      if (state.currentSpeed < 0.015) state.currentSpeed = 0;
+
+      if (state.currentSpeed > 0.02) {
+        state.idleTimer = 0;
+        state.roadOffset = (state.roadOffset + state.currentSpeed * dt * 2.6) % 1;
+        state.runnerAnimPhase += dt * (8 + state.currentSpeed * 12);
+        state.distanceSinceSpawn += state.currentSpeed * dt;
+      } else {
+        state.idleTimer += dt;
+      }
+
+      // Spawn gelombang rintangan/gerbang soal berdasarkan jarak tempuh
+      const spawnInterval = 0.68;
+      if (state.distanceSinceSpawn >= spawnInterval) {
+        state.distanceSinceSpawn = 0;
+        spawnNextWave();
+      }
+
+      // Update posisi & cek tabrakan setiap objek di lintasan
+      const playerZ = 0.88;
+      for (let i = state.entities.length - 1; i >= 0; i--) {
+        const ent = state.entities[i];
+        ent.z += state.currentSpeed * dt;
+
+        if (!ent.resolved && ent.z >= playerZ - 0.03) {
+          ent.resolved = true;
+          resolveEntityCollision(ent);
+        }
+
+        if (ent.z > 1.25) {
+          state.entities.splice(i, 1);
+        }
+      }
+
+      // Update partikel
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 420 * dt;
+        p.life -= dt;
+        if (p.life <= 0) state.particles.splice(i, 1);
+      }
+
+      // Update teks poin melayang
+      for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+        const ft = state.floatingTexts[i];
+        ft.y += ft.vy * dt;
+        ft.life -= dt;
+        if (ft.life <= 0) state.floatingTexts.splice(i, 1);
+      }
+
+      if (state.shakeTimer > 0) state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+      if (state.speedUpBannerTimer > 0) state.speedUpBannerTimer = Math.max(0, state.speedUpBannerTimer - dt);
+      if (state.toastTimer > 0) {
+        state.toastTimer -= dt;
+        if (state.toastTimer <= 0) feedbackToast.classList.remove('show');
+      }
+    }
+
+    function resolveEntityCollision(ent) {
+      const playerPos = projectTrackPoint(state.visualLaneX, 0.88);
+
+      if (ent.type === 'rock') {
+        if (ent.lanes.includes(state.lane)) {
+          if (state.posture === 'LOMPAT') {
+            AudioEngine.dodge();
+            spawnExplosion(playerPos.x, playerPos.y - 20, '#34d399', 14);
+            spawnFloatingText(playerPos.x, playerPos.y - 60, 'LOMPAT OK!', '#6ee7b7', 1.0);
+          } else {
+            AudioEngine.hit();
+            spawnExplosion(playerPos.x, playerPos.y - 20, '#f43f5e', 28);
+            addScoreDelta(GAME_CONFIG.POINTS_WRONG, `${GAME_CONFIG.POINTS_WRONG} TABRAK!`, '#fb7185');
+            loseLife('Aduh! Menabrak batu rendah — melompatlah untuk melewatinya!');
+          }
+        }
+      } else if (ent.type === 'bar') {
+        if (ent.lanes.includes(state.lane)) {
+          if (state.posture === 'MENUNDUK') {
+            AudioEngine.dodge();
+            spawnExplosion(playerPos.x, playerPos.y - 45, '#fbbf24', 14);
+            spawnFloatingText(playerPos.x, playerPos.y - 60, 'NUNDUK OK!', '#fde047', 1.0);
+          } else {
+            AudioEngine.hit();
+            spawnExplosion(playerPos.x, playerPos.y - 45, '#f43f5e', 28);
+            addScoreDelta(GAME_CONFIG.POINTS_WRONG, `${GAME_CONFIG.POINTS_WRONG} TABRAK!`, '#fb7185');
+            loseLife('Aduh! Terbentur palang tinggi — menunduklah saat melewati palang!');
+          }
+        }
+      } else if (ent.type === 'gate' && ent.question) {
+        const q = ent.question;
+        if (state.lane === q.correctIndex) {
+          state.correctCount++;
+          AudioEngine.correct();
+          spawnExplosion(playerPos.x, playerPos.y - 50, '#10b981', 34);
+          addScoreDelta(GAME_CONFIG.POINTS_CORRECT, `+${GAME_CONFIG.POINTS_CORRECT} BENAR!`, '#34d399');
+          showToast(`Benar! ${q.explanation}`, true);
+        } else {
+          AudioEngine.wrong();
+          spawnExplosion(playerPos.x, playerPos.y - 50, '#f43f5e', 30);
+          addScoreDelta(GAME_CONFIG.POINTS_WRONG, `${GAME_CONFIG.POINTS_WRONG} SALAH!`, '#fb7185');
+          loseLife(`Kurang tepat! Jawaban benar: "${q.options[q.correctIndex]}". ${q.explanation}`);
+        }
+        if (state.lives > 0) {
+          nextQuestion();
+        }
+      }
+    }
+
+    function updateMotionHUD() {
+      const laneNames = ['KIRI', 'TENGAH', 'KANAN'];
+      hudLaneText.textContent = laneNames[state.lane];
+      hudMotionBadge.textContent = state.posture;
+      hudMotionBadge.className = `motion-badge ${state.posture}`;
+
+      // Posisi mini-avatar di 3 jalur (16.6%, 50%, 83.3%)
+      const lanePercents = ['16.6%', '50%', '83.3%'];
+      miniAvatar.style.left = lanePercents[state.lane];
+      miniAvatar.classList.toggle('jumping', state.posture === 'LOMPAT');
+      miniAvatar.classList.toggle('ducking', state.posture === 'MENUNDUK');
+
+      const pacePct = Math.min(100, Math.round((state.currentSpeed / (GAME_CONFIG.BASE_TRACK_SPEED + 0.35)) * 100));
+      paceBarFill.style.width = `${pacePct}%`;
+
+      if (state.controlMode === 'CAMERA') {
+        sensorBulb.classList.toggle('active', poseState.detected);
+      }
+    }
+
+    /* =========================================================================
+       12. RENDER KANVAS (WEBCAM MIRRORED + KERANGKA POSE + LINTASAN 3D + AVATAR)
+       ========================================================================= */
+    function renderScene() {
+      ctx.save();
+
+      // Efek getar saat menabrak / salah jawab
+      if (state.shakeTimer > 0) {
+        const mag = state.shakeTimer * 24;
+        ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+      }
+
+      // 1. Latar Belakang (Umpan Webcam Mirrored + Lapisan Gelap AR)
+      drawMirroredWebcamBackdrop();
+
+      // 2. Kerangka Tubuh Tipis (Indikator Visual Sensor Pose AR)
+      if (poseState.detected && poseState.lastLandmarks) {
+        drawPoseSkeletonOverlay(poseState.lastLandmarks);
+      }
+
+      // 3. Lintasan 3 Jalur Perspektif
+      drawThreeLaneTrack();
+
+      // 4. Rintangan & Gerbang Jawaban (Urutkan dari jauh ke dekat)
+      const sortedEntities = state.entities.slice().sort((a, b) => a.z - b.z);
+      for (const ent of sortedEntities) {
+        if (ent.type === 'rock') drawLowRock(ent);
+        else if (ent.type === 'bar') drawHighBar(ent);
+        else if (ent.type === 'gate') drawAnswerGate(ent);
+      }
+
+      // 5. Karakter Pelari Utama di Lintasan
+      if (state.phase === 'PLAYING' || state.phase === 'CALIBRATING') {
+        drawRunnerCharacter();
+      }
+
+      // 6. Partikel Ledakan & Teks Poin Melayang (Terbaca normal, tidak terbalik)
+      drawParticles();
+      drawFloatingTexts();
+
+      // 7. Pengingat Lari di Tempat jika pemain diam > 2 detik
+      if (state.phase === 'PLAYING' && state.idleTimer > 1.8) {
+        drawIdlePrompt();
+      }
+
+      ctx.restore();
+    }
+
+    function drawMirroredWebcamBackdrop() {
+      if (poseState.isCameraReady && videoEl.readyState >= 2) {
+        // Cover aspect ratio secara proporsional
+        const vidRatio = videoEl.videoWidth / Math.max(1, videoEl.videoHeight);
+        const canvasRatio = viewW / Math.max(1, viewH);
+        let drawW = viewW;
+        let drawH = viewH;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (canvasRatio > vidRatio) {
+          drawH = viewW / vidRatio;
+          offsetY = (viewH - drawH) / 2;
+        } else {
+          drawW = viewH * vidRatio;
+          offsetX = (viewW - drawW) / 2;
+        }
+
+        // Efek cermin (mirroring) khusus untuk gambar webcam
+        ctx.save();
+        ctx.translate(viewW, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(videoEl, offsetX, offsetY, drawW, drawH);
+        ctx.restore();
+
+        // Lapisan gradasi gelap agar lintasan AR & teks soal tetap kontras tinggi
+        const grad = ctx.createLinearGradient(0, 0, 0, viewH);
+        grad.addColorStop(0, 'rgba(7, 11, 24, 0.78)');
+        grad.addColorStop(0.45, 'rgba(7, 11, 24, 0.56)');
+        grad.addColorStop(1, 'rgba(7, 11, 24, 0.86)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      } else {
+        // Latar neon futuristik saat mode keyboard / sebelum kamera aktif
+        const grad = ctx.createLinearGradient(0, 0, 0, viewH);
+        grad.addColorStop(0, '#070b18');
+        grad.addColorStop(0.45, '#111b3a');
+        grad.addColorStop(1, '#091024');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, viewW, viewH);
+      }
+    }
+
+    function drawPoseSkeletonOverlay(lm) {
+      // Koneksi tulang tubuh bagian atas & pinggul (tipis, transparan, non-intrusif)
+      const pairs = [
+        [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+        [11, 23], [12, 24], [23, 24], [23, 25], [24, 26]
+      ];
+
+      ctx.save();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = state.posture === 'LOMPAT'
+        ? 'rgba(34, 211, 238, 0.85)'
+        : state.posture === 'MENUNDUK'
+          ? 'rgba(245, 158, 11, 0.85)'
+          : 'rgba(16, 185, 129, 0.68)';
+
+      for (const [a, b] of pairs) {
+        if (!lm[a] || !lm[b]) continue;
+        if ((lm[a].visibility || 0) < 0.35 || (lm[b].visibility || 0) < 0.35) continue;
+        // Koordinat X di-mirror (1 - x) agar sejajar dengan umpan webcam cermin
+        const ax = (1 - lm[a].x) * viewW;
+        const ay = lm[a].y * viewH;
+        const bx = (1 - lm[b].x) * viewW;
+        const by = lm[b].y * viewH;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+
+      // Garis acuan baseline bahu saat kalibrasi & bermain
+      if (poseState.calibrated) {
+        const baseScreenY = poseState.baselineY * viewH;
+        ctx.setLineDash([6, 6]);
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(viewW * 0.12, baseScreenY);
+        ctx.lineTo(viewW * 0.88, baseScreenY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Titik tengah bahu sebagai kursor pelacakan
+      const cx = poseState.smoothedCenterX * viewW;
+      const cy = poseState.smoothedShoulderY * viewH;
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawThreeLaneTrack() {
+      const g = getTrackGeometry();
+
+      // Permukaan lintasan trapezoid transparan
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(g.centerX - g.topHalfW, g.horizonY);
+      ctx.lineTo(g.centerX + g.topHalfW, g.horizonY);
+      ctx.lineTo(g.centerX + g.bottomHalfW, g.bottomY);
+      ctx.lineTo(g.centerX - g.bottomHalfW, g.bottomY);
+      ctx.closePath();
+
+      const roadGrad = ctx.createLinearGradient(0, g.horizonY, 0, g.bottomY);
+      roadGrad.addColorStop(0, 'rgba(15, 23, 42, 0.55)');
+      roadGrad.addColorStop(1, 'rgba(15, 23, 42, 0.86)');
+      ctx.fillStyle = roadGrad;
+      ctx.fill();
+
+      // Sorotan halus pada jalur aktif pemain
+      const activeLeftTop = g.centerX - g.topHalfW + (state.lane * (g.topHalfW * 2)) / 3;
+      const activeRightTop = activeLeftTop + (g.topHalfW * 2) / 3;
+      const activeLeftBot = g.centerX - g.bottomHalfW + (state.lane * (g.bottomHalfW * 2)) / 3;
+      const activeRightBot = activeLeftBot + (g.bottomHalfW * 2) / 3;
+
+      ctx.beginPath();
+      ctx.moveTo(activeLeftTop, g.horizonY);
+      ctx.lineTo(activeRightTop, g.horizonY);
+      ctx.lineTo(activeRightBot, g.bottomY);
+      ctx.lineTo(activeLeftBot, g.bottomY);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.14)';
+      ctx.fill();
+
+      // Garis pembatas tepi lintasan
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.72)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(g.centerX - g.topHalfW, g.horizonY);
+      ctx.lineTo(g.centerX - g.bottomHalfW, g.bottomY);
+      ctx.moveTo(g.centerX + g.topHalfW, g.horizonY);
+      ctx.lineTo(g.centerX + g.bottomHalfW, g.bottomY);
+      ctx.stroke();
+
+      // Garis pembatas 3 jalur bagian dalam
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([14, 14]);
+      for (const ratio of [-1 / 3, 1 / 3]) {
+        ctx.beginPath();
+        ctx.moveTo(g.centerX + ratio * g.topHalfW, g.horizonY);
+        ctx.lineTo(g.centerX + ratio * g.bottomHalfW, g.bottomY);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Garis horizontal bergerak (ilusi kecepatan lari)
+      const stripeCount = 8;
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < stripeCount; i++) {
+        const z = ((i / stripeCount) + state.roadOffset / stripeCount) % 1;
+        const p = projectTrackPoint(1, z);
+        ctx.beginPath();
+        ctx.moveTo(g.centerX - p.halfW, p.y);
+        ctx.lineTo(g.centerX + p.halfW, p.y);
+        ctx.stroke();
+      }
+
+      // Label Jalur di bagian bawah lintasan
+      const labels = ['KIRI', 'TENGAH', 'KANAN'];
+      ctx.font = '700 12px "Outfit", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.6)';
+      for (let l = 0; l < 3; l++) {
+        const lp = projectTrackPoint(l, 0.98);
+        ctx.fillText(labels[l], lp.x, g.bottomY - 6);
+      }
+
+      ctx.restore();
+    }
+
+    function drawLowRock(ent) {
+      for (const laneIdx of ent.lanes) {
+        const p = projectTrackPoint(laneIdx, ent.z);
+        const w = p.laneWidth * 0.78;
+        const h = 36 * p.scale;
+
+        ctx.save();
+        // Bayangan batu
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 4, w * 0.5, h * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bentuk batu poligonal
+        const grad = ctx.createLinearGradient(p.x, p.y - h, p.x, p.y);
+        grad.addColorStop(0, '#f59e0b');
+        grad.addColorStop(1, '#92400e');
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = '#fde68a';
+        ctx.lineWidth = Math.max(1.5, 2.5 * p.scale);
+
+        ctx.beginPath();
+        ctx.moveTo(p.x - w * 0.46, p.y);
+        ctx.lineTo(p.x - w * 0.34, p.y - h * 0.85);
+        ctx.lineTo(p.x + w * 0.05, p.y - h);
+        ctx.lineTo(p.x + w * 0.38, p.y - h * 0.72);
+        ctx.lineTo(p.x + w * 0.46, p.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Label instruksi saat sudah cukup dekat
+        if (ent.z > 0.28) {
+          ctx.fillStyle = '#fef3c7';
+          ctx.font = `800 ${Math.round(13 * p.scale)}px "Outfit", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText('⬆ LOMPAT', p.x, p.y - h * 0.32);
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawHighBar(ent) {
+      for (const laneIdx of ent.lanes) {
+        const p = projectTrackPoint(laneIdx, ent.z);
+        const w = p.laneWidth * 0.88;
+        const postH = 112 * p.scale;
+        const beamH = 30 * p.scale;
+        const topY = p.y - postH;
+
+        ctx.save();
+        // Tiang penyangga kiri & kanan
+        ctx.fillStyle = '#475569';
+        const postW = Math.max(4, 8 * p.scale);
+        ctx.fillRect(p.x - w / 2, topY, postW, postH);
+        ctx.fillRect(p.x + w / 2 - postW, topY, postW, postH);
+
+        // Palang bahaya merah di bagian atas (ruang bawah kosong untuk menunduk)
+        const beamGrad = ctx.createLinearGradient(p.x - w / 2, topY, p.x + w / 2, topY + beamH);
+        beamGrad.addColorStop(0, '#e11d48');
+        beamGrad.addColorStop(1, '#f97316');
+        ctx.fillStyle = beamGrad;
+        ctx.strokeStyle = '#fecdd3';
+        ctx.lineWidth = Math.max(1.5, 2.2 * p.scale);
+        ctx.beginPath();
+        ctx.roundRect(p.x - w / 2, topY, w, beamH, 6 * p.scale);
+        ctx.fill();
+        ctx.stroke();
+
+        if (ent.z > 0.28) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `800 ${Math.round(13 * p.scale)}px "Outfit", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⬇ NUNDUK', p.x, topY + beamH / 2);
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawAnswerGate(ent) {
+      if (!ent.question) return;
+      const labels = ['A', 'B', 'C'];
+      const colors = ['#0ea5e9', '#8b5cf6', '#14b8a6'];
+
+      for (let laneIdx = 0; laneIdx < 3; laneIdx++) {
+        const p = projectTrackPoint(laneIdx, ent.z);
+        const w = p.laneWidth * 0.88;
+        const h = 118 * p.scale;
+        const topY = p.y - h;
+        const isSelectedLane = state.lane === laneIdx;
+
+        ctx.save();
+        // Bingkai gerbang menyala
+        ctx.fillStyle = isSelectedLane ? 'rgba(34, 211, 238, 0.28)' : 'rgba(15, 23, 42, 0.72)';
+        ctx.strokeStyle = isSelectedLane ? '#22d3ee' : colors[laneIdx];
+        ctx.lineWidth = isSelectedLane ? Math.max(2.5, 4 * p.scale) : Math.max(1.5, 2.5 * p.scale);
+
+        ctx.beginPath();
+        ctx.roundRect(p.x - w / 2, topY, w, h, 12 * p.scale);
+        ctx.fill();
+        ctx.stroke();
+
+        // Papan teks opsi jawaban di bagian atas gerbang
+        const headerH = 54 * p.scale;
+        ctx.fillStyle = isSelectedLane ? 'rgba(6, 182, 212, 0.92)' : 'rgba(30, 41, 59, 0.94)';
+        ctx.beginPath();
+        ctx.roundRect(p.x - w / 2, topY, w, headerH, [12 * p.scale, 12 * p.scale, 4, 4]);
+        ctx.fill();
+
+        // Teks opsi jawaban (terbaca normal, membungkus rapi jika panjang)
+        if (ent.z > 0.14) {
+          const optText = `${labels[laneIdx]}. ${ent.question.options[laneIdx]}`;
+          const fontSize = Math.max(10, Math.round(14 * p.scale));
+          ctx.font = `800 ${fontSize}px "Plus Jakarta Sans", sans-serif`;
+          ctx.fillStyle = isSelectedLane ? '#04131c' : '#f8fafc';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          drawWrappedText(ctx, optText, p.x, topY + headerH * 0.5, w * 0.88, fontSize * 1.18);
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+      const words = text.split(' ');
+      const lines = [];
+      let current = '';
+      for (const word of words) {
+        const test = current ? `${current} ${word}` : word;
+        if (context.measureText(test).width > maxWidth && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = test;
+        }
+      }
+      if (current) lines.push(current);
+      const startY = y - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, idx) => {
+        context.fillText(line, x, startY + idx * lineHeight);
+      });
+    }
+
+    function drawRunnerCharacter() {
+      const p = projectTrackPoint(state.visualLaneX, 0.88);
+      const jumpLift = state.posture === 'LOMPAT' ? 54 : 0;
+      const duckScaleY = state.posture === 'MENUNDUK' ? 0.56 : 1;
+      const bounce = state.posture === 'BERLARI' ? Math.abs(Math.sin(state.runnerAnimPhase)) * 10 : 0;
+
+      const x = p.x;
+      const groundY = p.y;
+      const bodyY = groundY - jumpLift - bounce;
+
+      ctx.save();
+
+      // Bayangan di lantai lintasan
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      const shadowScale = state.posture === 'LOMPAT' ? 0.65 : 1;
+      ctx.beginPath();
+      ctx.ellipse(x, groundY + 4, 28 * shadowScale, 9 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Transformasi skala untuk animasi menunduk
+      ctx.translate(x, bodyY);
+      ctx.scale(1, duckScaleY);
+
+      // Ayunan kaki saat berlari
+      const legSwing = state.posture === 'BERLARI' ? Math.sin(state.runnerAnimPhase) * 14 : 0;
+
+      // Kaki kiri & kanan
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-9, -28);
+      ctx.lineTo(-12 - legSwing * 0.4, -4 + Math.max(0, legSwing));
+      ctx.moveTo(9, -28);
+      ctx.lineTo(12 + legSwing * 0.4, -4 + Math.max(0, -legSwing));
+      ctx.stroke();
+
+      // Badan jaket olahraga
+      const torsoGrad = ctx.createLinearGradient(0, -72, 0, -24);
+      torsoGrad.addColorStop(0, '#10b981');
+      torsoGrad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = torsoGrad;
+      ctx.strokeStyle = '#a7f3d0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-18, -68, 36, 44, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tangan mengayun
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(-18, -58);
+      ctx.lineTo(-27, -36 - legSwing * 0.6);
+      ctx.moveTo(18, -58);
+      ctx.lineTo(27, -36 + legSwing * 0.6);
+      ctx.stroke();
+
+      // Kepala / helm sporty
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(0, -84, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Visor AR neon
+      ctx.fillStyle = '#06b6d4';
+      ctx.beginPath();
+      ctx.roundRect(-10, -89, 20, 7, 4);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawParticles() {
+      for (const p of state.particles) {
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawFloatingTexts() {
+      for (const ft of state.floatingTexts) {
+        const alpha = Math.max(0, ft.life / ft.maxLife);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `900 ${Math.round(24 * ft.scale)}px "Outfit", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(2, 6, 23, 0.85)';
+        ctx.strokeText(ft.text, ft.x, ft.y);
+        ctx.fillStyle = ft.color;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+      }
+    }
+
+    function drawIdlePrompt() {
+      const pulse = 0.72 + 0.28 * Math.sin(performance.now() * 0.008);
+      const msg = state.controlMode === 'CAMERA'
+        ? '🏃 LARI DI TEMPAT UNTUK MAJU!'
+        : '⌨️ TAHAN TOMBOL W / SHIFT UNTUK BERLARI!';
+
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      const boxW = Math.min(viewW * 0.86, 440);
+      const boxH = 46;
+      const bx = (viewW - boxW) / 2;
+      const by = viewH * 0.54;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, boxW, boxH, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = '800 16px "Outfit", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(msg, viewW / 2, by + boxH / 2);
+      ctx.restore();
+    }
+
+    // Main Render Loop (60 FPS dengan perhitungan delta time dt)
+    let lastFrameTime = performance.now();
+    function mainLoop(now) {
+      const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+
+      updateSimulation(dt);
+      renderScene();
+
+      requestAnimationFrame(mainLoop);
+    }
+    requestAnimationFrame(mainLoop);
+
+    /* =========================================================================
+       13. INTEGRASI GOOGLE SPREADSHEET (APPS SCRIPT) & FALLBACK LOKAL
+       ========================================================================= */
+    const DEFAULT_FALLBACK_LEADERBOARD = [
+      { nama: 'Nadia Putri', kelas: '8A', skor: 90, mode: 'Single Player' },
+      { nama: 'Dimas Pratama', kelas: '8B', skor: 70, mode: 'Single Player' },
+      { nama: 'Aulia Rahma', kelas: '7C', skor: 60, mode: 'Single Player' },
+      { nama: 'Bagas Saputra', kelas: '9A', skor: 40, mode: 'Single Player' },
+      { nama: 'Citra Lestari', kelas: '7A', skor: 30, mode: 'Single Player' }
+    ];
+
+    function getLocalLeaderboard() {
+      try {
+        const raw = localStorage.getItem(GAME_CONFIG.LOCAL_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+      return DEFAULT_FALLBACK_LEADERBOARD.slice();
+    }
+
+    function saveToLocalLeaderboard(entry) {
+      const list = getLocalLeaderboard();
+      list.push(entry);
+      list.sort((a, b) => Number(b.skor) - Number(a.skor));
+      const top5 = list.slice(0, 5);
+      try {
+        localStorage.setItem(GAME_CONFIG.LOCAL_STORAGE_KEY, JSON.stringify(top5));
+      } catch (e) {}
+      return top5;
+    }
+
+    // Render tabel Leaderboard dengan textContent (Anti-XSS, tanpa innerHTML mentah)
+    function renderLeaderboardTable(rows, currentPlayerEntry) {
+      leaderboardBody.innerHTML = '';
+      const top5 = (rows || []).slice(0, 5);
+
+      if (top5.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.textContent = 'Belum ada data skor.';
+        tr.appendChild(td);
+        leaderboardBody.appendChild(tr);
+        return;
+      }
+
+      const medals = ['🥇', '🥈', '🥉', '4', '5'];
+      top5.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        if (
+          currentPlayerEntry &&
+          String(item.nama) === String(currentPlayerEntry.nama) &&
+          Number(item.skor) === Number(currentPlayerEntry.skor)
+        ) {
+          tr.className = 'lb-highlight';
+        }
+
+        const tdRank = document.createElement('td');
+        tdRank.textContent = medals[index] || String(index + 1);
+
+        const tdNama = document.createElement('td');
+        tdNama.textContent = String(item.nama || 'Tanpa Nama');
+
+        const tdKelas = document.createElement('td');
+        tdKelas.textContent = String(item.kelas || '-');
+
+        const tdSkor = document.createElement('td');
+        tdSkor.className = 'score-col';
+        tdSkor.textContent = String(item.skor ?? 0);
+
+        tr.appendChild(tdRank);
+        tr.appendChild(tdNama);
+        tr.appendChild(tdKelas);
+        tr.appendChild(tdSkor);
+        leaderboardBody.appendChild(tr);
+      });
+    }
+
+    async function submitScoreAndLoadLeaderboard() {
+      const payload = {
+        timestamp: new Date().toISOString(),
+        nama: state.playerName,
+        kelas: state.playerClass,
+        skor: state.score,
+        mode: GAME_CONFIG.GAME_MODE
+      };
+
+      // Selalu simpan cadangan lokal terlebih dahulu
+      const localTop5 = saveToLocalLeaderboard(payload);
+
+      const isPlaceholderUrl = !SCRIPT_URL || SCRIPT_URL.includes('GANTI_DENGAN_URL_WEB_APP_ANDA');
+      if (isPlaceholderUrl || !navigator.onLine) {
+        lbSyncStatus.textContent = isPlaceholderUrl
+          ? 'Mode Lokal (URL Sheets belum diatur)'
+          : 'Mode Offline (Tersimpan lokal)';
+        renderLeaderboardTable(localTop5, payload);
+        return;
+      }
+
+      lbSyncStatus.textContent = 'Menyinkronkan ke Google Sheets...';
+
+      try {
+        // Anti-CORS GitHub Pages: Content-Type text/plain;charset=utf-8 mencegah preflight OPTIONS
+        const response = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data && Array.isArray(data.leaderboard) && data.leaderboard.length > 0) {
+          lbSyncStatus.textContent = 'Tersinkron ke Google Sheets ✓';
+          renderLeaderboardTable(data.leaderboard, payload);
+        } else {
+          lbSyncStatus.textContent = 'Terkirim ke Sheets (Tampilan lokal)';
+          renderLeaderboardTable(localTop5, payload);
+        }
+      } catch (err) {
+        lbSyncStatus.textContent = 'Gagal terhubung ke Sheets — Menampilkan skor lokal';
+        renderLeaderboardTable(localTop5, payload);
+      }
+    }
+
+    /* =========================================================================
+       14. EVENT LISTENER TOMBOL ANTARMUKA
+       ========================================================================= */
+    function readPlayerIdentity() {
+      const nama = inputNama.value.trim();
+      const kelas = inputKelas.value.trim();
+      if (!nama) {
+        startStatus.textContent = 'Silakan isi Nama Lengkap Siswa terlebih dahulu.';
+        startStatus.classList.add('error');
+        inputNama.focus();
+        return false;
+      }
+      state.playerName = nama;
+      state.playerClass = kelas || '-';
+      return true;
+    }
+
+    document.getElementById('btnStartCamera').addEventListener('click', async () => {
+      AudioEngine.click();
+      if (!readPlayerIdentity()) return;
+
+      const btn = document.getElementById('btnStartCamera');
+      btn.disabled = true;
+      state.controlMode = 'CAMERA';
+
+      try {
+        await initCameraAndPose();
+        btn.disabled = false;
+        startCalibration();
+      } catch (err) {
+        btn.disabled = false;
+        startStatus.textContent = `Kamera gagal aktif (${err.message}). Anda bisa mencoba "Mode Keyboard".`;
+        startStatus.classList.add('error');
+      }
+    });
+
+    document.getElementById('btnStartKeyboard').addEventListener('click', () => {
+      AudioEngine.click();
+      if (!readPlayerIdentity()) return;
+      state.controlMode = 'KEYBOARD';
+      beginGameplay();
+    });
+
+    document.getElementById('btnRecalibrate').addEventListener('click', () => {
+      AudioEngine.click();
+      if (state.controlMode === 'CAMERA') {
+        startCalibration();
+      } else {
+        showToast('Kalibrasi bahu hanya digunakan pada Mode Kamera AR.', true);
+      }
+    });
+
+    document.getElementById('btnPlayAgain').addEventListener('click', () => {
+      AudioEngine.click();
+      if (state.controlMode === 'CAMERA' && poseState.isCameraReady) {
+        startCalibration();
+      } else {
+        beginGameplay();
+      }
+    });
+
+    document.getElementById('btnBackMenu').addEventListener('click', () => {
+      AudioEngine.click();
+      state.phase = 'MENU';
+      gameOverScreen.classList.add('hidden');
+      gameHud.classList.add('hidden');
+      startScreen.classList.remove('hidden');
+    });
+  </script>
+
+  <!--
+  ==============================================================================
+  PANDUAN & KODE BACKEND GOOGLE APPS SCRIPT (INTEGRASI GOOGLE SHEETS)
+  ==============================================================================
+
+  LANGKAH 1: SIAPKAN GOOGLE SPREADSHEET
+  1. Buka https://sheets.new untuk membuat Google Spreadsheet baru.
+  2. Ganti nama tab sheet di bagian bawah dari "Sheet1" menjadi tepat: Skor
+  3. Pada baris pertama (A1 sampai E1), isi judul kolom persis sebagai berikut:
+     A1: Timestamp | B1: Nama | C1: Kelas | D1: Skor | E1: Mode
+
+  LANGKAH 2: PASANG KODE GOOGLE APPS SCRIPT
+  1. Di menu atas Google Sheets, klik Ekstensi (Extensions) -> Apps Script.
+  2. Hapus kode default yang ada, lalu salin-tempel (paste) seluruh kode di bawah ini:
+
+  -------------------- SALIN KODE APPS SCRIPT DI BAWAH INI ---------------------
+
+ 
+
+  --------------------- BATAS AKHIR KODE APPS SCRIPT ---------------------------
+
+  LANGKAH 3: DEPLOY SEBAGAI WEB APP
+  1. Klik ikon Simpan (Ctrl+S), beri nama proyek misalnya: EduRunner AR Backend.
+  2. Klik tombol biru "Terapkan" (Deploy) di kanan atas -> pilih "Deployment baru" (New deployment).
+  3. Klik ikon gerigi di samping "Pilih jenis" -> pilih "Aplikasi web" (Web app).
+  4. Atur konfigurasi berikut:
+     - Deskripsi: EduRunner AR v1
+     - Jalankan sebagai (Execute as): Saya (Me)
+     - Yang memiliki akses (Who has access): Siapa saja (Anyone)
+  5. Klik "Terapkan" (Deploy), lalu klik "Izinkan akses" (Authorize access).
+     (Jika muncul peringatan "Google hasn't verified this app", klik "Lanjutan / Advanced" -> "Go to EduRunner AR Backend (unsafe)" -> "Allow").
+  6. Salin "URL Aplikasi Web" yang berakhiran /exec.
+  7. Tempel URL tersebut untuk menggantikan nilai konstanta `SCRIPT_URL` di bagian atas <script> pada file index.html ini.
+  ==============================================================================
+  -->
+</body>
+</html>
